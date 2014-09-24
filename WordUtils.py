@@ -63,7 +63,7 @@ class WordUtils(object):
         self.AllPairs = {}
         self.db = pymongo.Connection(mongo_addr)[mongo_db]
         
-        for mongo_co in mongo_cos
+        for mongo_co in mongo_cos:
 
             self.co = self.db[mongo_co]
             logging.info('Collect posts from %s' % (self.co.full_name))
