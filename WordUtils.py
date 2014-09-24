@@ -19,6 +19,7 @@ class WordUtils(object):
         self.based = 'post' if 'based' not in kwargs else kwargs['based']
 
         self.AllPairs = {}
+        self.PMI = {}
         
     def build_dist(self, path="resources/all-pairs.pkl", **kwargs):
         """
@@ -157,12 +158,17 @@ class WordUtils(object):
                 word = word.lower() if not case else word
                 self.Occur[ word ] += 1
 
-    def build_PMI(self):
+    def build_PMI(self, path="resources/bk-owl.pmi.pkl"):
         """
         pmi(x,y) = log( p(x,y)/p(x)p(y) ) 
             where p(x), p(y) are the probability of the word x and y respectively
             and p(x,y) is the probability of the pair (x,y)
         """
+        if os.path.exists(path):
+            logging.info('loading PMI from %s' % (path))
+            self.PMI = pickle.load(open(path))
+            return True
+
         from math import log
         num_of_post = float(len(self.AllPairs))
 
@@ -182,19 +188,54 @@ class WordUtils(object):
 
             self.PMI[(x,y)] = pmi_x_y
 
+        logging.info('dumping PMI into %s' % (path))
+        pickle.dump(self.PMI, open(path, 'wb'), protocol=2)
+
+    def get_PMI(self, w1, w2, case=False, order=False):
+        if not self.PMI:
+            logging.error("cannot find PMI data, run `build_PMI(path='...')` first")
+            return False
+        else:
+            pair = [w1, w2] if not case else [w1.lower(), w2.lower()]
+            pair = tuple(sorted(pair)) if not order else tuple(pair)
+            pair = tuple(pair)
+
+            if pair in self.PMI:
+                return self.PMI[pair]
+            else:
+                logging.warn("can't find the pair", pair, "in PMI data")
+                return 0.0
+
+def usage():
+
+    module = __file__.replace('.py','')
+    print """
+    Usage Examples of %s
+    ==================%s
+
+    >> from WordUtils import WordUtils
+
+    >> wu = WordUtils(verbose=True)
+
+    ## To build PMI of certain data:
+
+        >> wu.build_dist()
+        >> wu.build_cooccurrence()
+        >> wu.build_PMI()
+
+    ## To find the PMI of certain word pair
+
+        >> wu.get_PMI(w1, w2)
+    """ % (module, '='*len(module))
 
 if __name__ == '__main__':
     
-    """
-    from WordUtils import WordUtils
-    """
+    usage()
 
-    wu = WordUtils(verbose=True)
 
-    wu.build_dist()
-
-    wu.build_cooccurrence()
-
-    wu.build_PMI(AllPairs, Cooccur)
+    
+    
+    
+    
 
 
