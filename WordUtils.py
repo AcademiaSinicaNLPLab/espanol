@@ -21,7 +21,7 @@ class WordUtils(object):
         self.AllPairs = {}
         self.PMI = {}
         
-    def build_dist(self, path="resources/all-pairs.pkl", **kwargs):
+    def build_dist(self, path, **kwargs):
         """
         build(+save)/load word distribution
 
@@ -35,15 +35,17 @@ class WordUtils(object):
 
             mongo_addr: str
             mongo_db:   str
-            mongo_co:   str
+            mongo_cos:  list
             override:   True/False
-
         """
 
         ## mongodb
         mongo_addr = 'doraemon.iis.sinica.edu.tw' if 'mongo_addr' not in kwargs else kwargs['mongo_addr']
-        mongo_db = 'espanol' if 'espanol' not in kwargs else kwargs['mongo_db']
-        mongo_co = 'bk.posts' if 'bk.posts' not in kwargs else kwargs['mongo_co']
+        mongo_db = 'espanol' if 'mongo_db' not in kwargs else kwargs['mongo_db']
+
+        ## support multiple target collections
+        ## mongo_cos = ['bk.posts', 'qy.posts']
+        mongo_cos = ['bk.posts'] if 'mongo_cos' not in kwargs else kwargs['mongo_cos']
 
         override = False if 'override' not in kwargs else kwargs['override']
 
@@ -58,46 +60,48 @@ class WordUtils(object):
             return True
 
         ### fetch data from mongodb
-        
         self.AllPairs = {}
         self.db = pymongo.Connection(mongo_addr)[mongo_db]
-        self.co = self.db[mongo_co]
-        logging.info('Collect AllPairs from MongoDB <%s>' % (self.co.full_name))
+        
+        for mongo_co in mongo_cos
 
-        total = self.co.count()
-        for i, mdoc in enumerate(self.co.find()):
-            if 'parsed' not in mdoc or len(mdoc['parsed']) == 0:
-                logging.debug('> skip %d/%d mongo doc' % (i+1, total))
-                continue
-            
-            logging.debug('> process %d/%d mongo doc' % (i+1, total))
-            ## "_id" : ObjectId("5406a2aa3480ad1b9b828c52"),
-            ## post_id will be "5406a2aa3480ad1b9b828c52"
-            post_id = str(mdoc['_id'])
+            self.co = self.db[mongo_co]
+            logging.info('Collect posts from %s' % (self.co.full_name))
 
-            pairs = Counter()
-            for parsed_sent in mdoc['parsed']:
-                ## parsed_sent
-                # '\u7684(DE)\u3000\u591c\u666f(Na)\u3000\u4e0d\u932f(VH)'
+            total = self.co.count()
+            for i, mdoc in enumerate(self.co.find()):
+                if 'parsed' not in mdoc or len(mdoc['parsed']) == 0:
+                    logging.debug('> skip %d/%d mongo doc' % (i+1, total))
+                    continue
+                
+                logging.debug('> process %d/%d mongo doc' % (i+1, total))
+                ## "_id" : ObjectId("5406a2aa3480ad1b9b828c52"),
+                ## post_id will be "5406a2aa3480ad1b9b828c52"
+                post_id = str(mdoc['_id'])
 
-                spliited = parsed_sent.strip().split(u'　')
-                ## spliited:
-                # [u'\u7684(DE)',
-                #  u'\u591c\u666f(Na)'
-                #  u'\u4e0d\u932f(VH)'] 
+                pairs = Counter()
+                for parsed_sent in mdoc['parsed']:
+                    ## parsed_sent
+                    # '\u7684(DE)\u3000\u591c\u666f(Na)\u3000\u4e0d\u932f(VH)'
 
-                for word_pos in spliited:
-                    token = '('.join(word_pos.split('(')[:-1])
-                    postag = word_pos.split('(')[-1].split(')')[0]
-                    ## token: \u591c\u666f --> 夜景
-                    ## token: Na
-                    pairs[ (token,postag) ] += 1
+                    spliited = parsed_sent.strip().split(u'　')
+                    ## spliited:
+                    # [u'\u7684(DE)',
+                    #  u'\u591c\u666f(Na)'
+                    #  u'\u4e0d\u932f(VH)'] 
 
-            self.AllPairs[post_id] = pairs
+                    for word_pos in spliited:
+                        token = '('.join(word_pos.split('(')[:-1])
+                        postag = word_pos.split('(')[-1].split(')')[0]
+                        ## token: \u591c\u666f --> 夜景
+                        ## token: Na
+                        pairs[ (token,postag) ] += 1
 
-        logging.info('dumping AllPairs into %s' % (path))
-        pickle.dump(self.AllPairs, open(path, 'wb'), protocol=2)
-        return True
+                self.AllPairs[post_id] = pairs
+
+            logging.info('dumping AllPairs into %s' % (path))
+            pickle.dump(self.AllPairs, open(path, 'wb'), protocol=2)
+            return True
 
     def build_cooccurrence(self, tag='N', targetList='resources/wordlist.owl.pkl', order=False, case=False):
         """
@@ -158,7 +162,7 @@ class WordUtils(object):
                 word = word.lower() if not case else word
                 self.Occur[ word ] += 1
 
-    def build_PMI(self, path="resources/bk-owl.pmi.pkl"):
+    def build_PMI(self, path):
         """
         pmi(x,y) = log( p(x,y)/p(x)p(y) ) 
             where p(x), p(y) are the probability of the word x and y respectively
@@ -219,9 +223,17 @@ def usage():
 
     ## To build PMI of certain data:
 
-        >> wu.build_dist()
+        >> wu.build_dist(path="resources/all-pairs.pkl")
+
+        or specify the mongo address, collections and override it
+        and finally save AllPairs in `resources/new.data.pairs.pkl`
+        >> wu.build_dist(path="resources/new.data.pairs.pkl", mongo_addr="your.own.mongo", mongo_cos=["bk.posts", "qy.posts"], override=True)
+
         >> wu.build_cooccurrence()
-        >> wu.build_PMI()
+        >> wu.build_PMI(path="resources/bk-owl.pmi.pkl")
+
+        or specify a new path for storing PMI data 
+        >> wu.build_PMI(path="resources/bk-qy-owl.pmi.pkl")
 
     ## To find the PMI of certain word pair
 
